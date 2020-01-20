@@ -1,0 +1,49 @@
+@startuml
+autonumber
+hide footbox
+
+actor worker as w
+actor admin
+box APP
+    participant app
+    queue registry_queue as q
+    database db
+end box
+participant api
+
+== The administrator configures the device ==
+admin -> app: Configure the device:\n\
+zone, authentication method, \n\
+photo resolution, etc
+
+== Refresh the biometric database: Every 1/2 hour or by demand ==
+app -> api: Refresh the biometric database\n\
+POST /get_latest_biometric_data/{zone}
+app <<-- api: RESPONSE: zone_biometric_data
+
+== The worker tries to authenticate ==
+
+w -> app: The actor uses his authentication method \n\
+fingerprint, rfid token, etc
+alt IS_ONLINE
+    app -> api: auth_result := online authentication
+else IS_OFFLINE
+    app -> app: auth_result := offline authentication
+end
+
+alt auth_result == IS_VALID
+    app -> app: Register the authentication
+    app -> q: enqueue the registry
+    app -> app: Show the success screen
+else auth_result == IS_INVALID
+    app -> app: Show the failed screen
+end
+
+
+== Dequeue the registry: Every N h ==
+app -> app: reg := get all queue registries
+app -> api: POST /sync {reg}
+api <<-- app: RESP result := sync registry
+alt result == SUCCESS
+app -> q: clear the registry
+@enduml
